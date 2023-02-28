@@ -1,14 +1,16 @@
 package com.krs.demo;
 
+import static com.krs.demo.Constants.bluetoothLeScanner;
+import static com.krs.demo.Constants.mBluetoothAdapter;
+import static com.krs.demo.Constants.mGoogleApiClient;
+import static com.krs.demo.Constants.mLocationRequest;
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
-import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
@@ -25,6 +27,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -40,6 +43,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -47,13 +51,10 @@ import androidx.core.content.FileProvider;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.common.api.PendingResult;
-import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
-import com.google.android.gms.location.LocationSettingsResult;
 import com.google.android.gms.location.LocationSettingsStatusCodes;
 
 import org.json.JSONObject;
@@ -63,7 +64,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, View.OnClickListener {
 
@@ -71,29 +71,28 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     private static final String TAG = "MainActivity";
     public static TextView txtSrNo = null, txt_title1 = null, txt_title2 = null, txt_title3 = null, txt_title4 = null, txt_title5 = null, txt_title6 = null, txt_title7 = null;
     private static final DecimalFormat df2 = new DecimalFormat(".##");
-    private LocationRequest mLocationRequest;
-    private GoogleApiClient mGoogleApiClient;
-    private PendingResult<LocationSettingsResult> result;
-    private BluetoothDevice bluetoothDevice;
-    private Button btnScan, btnTare,btnMode,btnInc,btnShift;
+
+    // private BluetoothDevice bluetoothDevice;
+    private Button btnScan, btnTare, btnMode, btnInc, btnShift;
     private Button btncount;
     private int count = 0, isShow = 0;
     private SharedPreferences mSharedPreference;
-    private BluetoothAdapter mBluetoothAdapter;
-    private EditText  edt_net_wt = null, edtLotno = null, edtBaleno = null, edtMaterial = null, edt_tare_wt = null;
+
+    private EditText edt_net_wt = null, edtLotno = null, edtBaleno = null, edtMaterial = null, edt_tare_wt = null;
     private TextView txt_gross_wt = null;
     private TextClock textClock = null;
     private BluetoothLEService mBluetoothLEService;
     private SharedPreferences.Editor mEditor;
     private BluetoothGattCharacteristic mNotifyCharacteristic;
-    private BluetoothLeScanner bluetoothLeScanner;
+    String dev_address = "", dev_name = "";
 
     public final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        @RequiresApi(api = Build.VERSION_CODES.S)
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                 if (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1) == BluetoothAdapter.STATE_OFF) {
-                    alert();
+                    Constants.alert(MainActivity.this);
                 }
             }
             if (LocationManager.PROVIDERS_CHANGED_ACTION.equals(action)) {
@@ -117,7 +116,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             btnInc.setEnabled(true);
             btnShift.setEnabled(true);
 
-            mBluetoothLEService.connect(bluetoothDevice.getAddress());
+            mBluetoothLEService.connect(dev_address);
             startScanning(false);
         }
 
@@ -155,10 +154,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         public void onScanResult(int callbackType, ScanResult result) {
             super.onScanResult(callbackType, result);
 
-                bluetoothDevice = result.getDevice();
-                Intent gattServiceIntent = new Intent(MainActivity.this, BluetoothLEService.class);
-                bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
-                Log.d(TAG,"address: "+bluetoothDevice.getAddress());
+//                bluetoothDevice = result.getDevice();
+//                Intent gattServiceIntent = new Intent(MainActivity.this, BluetoothLEService.class);
+//                bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+//                Log.d(TAG,"address: "+bluetoothDevice.getAddress());
         }
 
         @Override
@@ -182,25 +181,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         return intentFilter;
     }
 
-    public static void setBluetooth(boolean enable) {
-        BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        boolean isEnabled = bluetoothAdapter.isEnabled();
-        if (enable && !isEnabled) {
-            bluetoothAdapter.enable();
-        } else if (!enable && isEnabled) {
-            bluetoothAdapter.disable();
-
-        }
-        // No need to change bluetooth state
-    }
-
     private void updateConnectionState(final String status) {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                btnScan.setText(status);
-            }
-        });
+        runOnUiThread(() -> btnScan.setText(status));
     }
 
     private void displayData(byte[] data) {
@@ -365,90 +347,95 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+        Constants.checkPermissions(this);
         MemoryAllocation();
-        btnScan.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if(btnScan.getText().toString().equalsIgnoreCase(getString(R.string.scan))){
-                    alert("Are you want to Scan?", getString(R.string.scan));
-                }else if(btnScan.getText().toString().equalsIgnoreCase(getString(R.string.connected))){
-                    alert("Are you want to DISCONNECT?", getString(R.string.connected));
-                }
+        dev_address = getIntent().getExtras().getString("Address");
+        dev_name = getIntent().getExtras().getString("Name");
+        if (dev_address != null && !dev_address.isEmpty()) {
+            mEditor.putString(Constants.dev_address_sp, dev_address);
+            mEditor.putString(Constants.dev_name_sp, dev_name);
+            mEditor.apply();
+            if (mBluetoothLEService != null) {
+                mBluetoothLEService.connect(dev_address);
             }
-        });
-        btnTare.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (mNotifyCharacteristic != null) {
-                    mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "T");
-                } else {
-                    Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
+        } else {
+            dev_address = mSharedPreference.getString(Constants.dev_address_sp, "");
+        }
+        if (dev_address.isEmpty()) {
+            finish();
+        }
 
-        btnMode.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (mNotifyCharacteristic != null) {
-                    mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "M");
-                } else {
-                    Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
-                }
+
+        Constants.setupBluetooth(this);
+        Intent gattServiceIntent = new Intent(MainActivity.this, BluetoothLEService.class);
+        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+
+        btnScan.setOnClickListener(view -> {
+            if (btnScan.getText().toString().equalsIgnoreCase(getString(R.string.scan))) {
+                alert("Are you want to Scan?", getString(R.string.scan));
+            } else if (btnScan.getText().toString().equalsIgnoreCase(getString(R.string.connected))) {
+                alert("Are you want to DISCONNECT?", getString(R.string.connected));
             }
         });
-
-        btnInc.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (mNotifyCharacteristic != null) {
-                    mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "I");
-                } else {
-                    Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
-                }
+        btnTare.setOnClickListener(view -> {
+            if (mNotifyCharacteristic != null) {
+                mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "T");
+            } else {
+                Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
             }
         });
 
-        btnShift.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (mNotifyCharacteristic != null) {
-                    mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "S");
-                } else {
-                    Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
-                }
+        btnMode.setOnClickListener(view -> {
+            if (mNotifyCharacteristic != null) {
+                mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "M");
+            } else {
+                Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        btnInc.setOnClickListener(view -> {
+            if (mNotifyCharacteristic != null) {
+                mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "I");
+            } else {
+                Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        btnShift.setOnClickListener(view -> {
+            if (mNotifyCharacteristic != null) {
+                mBluetoothLEService.writeCharacteristic(mNotifyCharacteristic, "S");
+            } else {
+                Toast.makeText(MainActivity.this, "Please connect again!", Toast.LENGTH_SHORT).show();
             }
         });
 
 
-        findViewById(R.id.btnNext).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                JSONObject mjsonobject = new JSONObject();
-                try {
-                    mjsonobject.put(txt_title1.getText().toString(), txtSrNo.getText().toString());
-                    mjsonobject.put(txt_title2.getText().toString(), edtLotno.getText().toString());
-                    mjsonobject.put(txt_title3.getText().toString(), edtBaleno.getText().toString());
-                    mjsonobject.put(txt_title4.getText().toString(), txt_gross_wt.getText().toString());
-                    mjsonobject.put(txt_title5.getText().toString(), edt_tare_wt.getText().toString());
-                    mjsonobject.put(txt_title6.getText().toString(), edt_net_wt.getText().toString());
-                    mjsonobject.put(txt_title7.getText().toString(), edtMaterial.getText().toString());
-                } catch (Exception e) {
-                    e.getMessage();
-                }
-                String filename = "helix_" + edtLotno.getText().toString().trim() + "_lot.xls";
-                Constants.exportToExcel(mjsonobject, filename, txtSrNo.getText().toString().equalsIgnoreCase("1"));
-                int no = Integer.parseInt(txtSrNo.getText().toString()) + 1;
-                txtSrNo.setText("" + no);
-                int bale_no = Integer.parseInt(edtBaleno.getText().toString()) + 1;
-                edtBaleno.setText("" + bale_no);
-                Toast.makeText(MainActivity.this, "Written in " + filename, Toast.LENGTH_SHORT).show();
+        findViewById(R.id.btnNext).setOnClickListener(v -> {
+            JSONObject mjsonobject = new JSONObject();
+            try {
+                mjsonobject.put(txt_title1.getText().toString(), txtSrNo.getText().toString());
+                mjsonobject.put(txt_title2.getText().toString(), edtLotno.getText().toString());
+                mjsonobject.put(txt_title3.getText().toString(), edtBaleno.getText().toString());
+                mjsonobject.put(txt_title4.getText().toString(), txt_gross_wt.getText().toString());
+                mjsonobject.put(txt_title5.getText().toString(), edt_tare_wt.getText().toString());
+                mjsonobject.put(txt_title6.getText().toString(), edt_net_wt.getText().toString());
+                mjsonobject.put(txt_title7.getText().toString(), edtMaterial.getText().toString());
+            } catch (Exception e) {
+                e.getMessage();
             }
+            String filename = "superb_" + edtLotno.getText().toString().trim() + "_lot.xls";
+            Constants.exportToExcel(mjsonobject, filename, txtSrNo.getText().toString().equalsIgnoreCase("1"));
+            int no = Integer.parseInt(txtSrNo.getText().toString()) + 1;
+            txtSrNo.setText("" + no);
+            int bale_no = Integer.parseInt(edtBaleno.getText().toString()) + 1;
+            edtBaleno.setText("" + bale_no);
+            Toast.makeText(MainActivity.this, "Written in " + filename, Toast.LENGTH_SHORT).show();
         });
 
         findViewById(R.id.btnSubmit).setOnClickListener(new View.OnClickListener() {
@@ -475,7 +462,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 // set dialog message
                 alertDialogBuilder.setCancelable(false).setPositiveButton("Ok", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
-                        String filename = "helix_" + userInput.getText().toString().trim() + "_lot.xls";
+                        String filename = "superb_" + userInput.getText().toString().trim() + "_lot.xls";
                         File file = Constants.getFile(filename);
                         ExportAlert(file);
                     }
@@ -493,34 +480,28 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         });
 
-        btncount.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (count == 0) {
-                    count = 1;
-                } else if (count == 1) {
-                    count = 2;
-                } else if (count == 2) {
-                    count = 3;
-                } else if (count == 3) {
-                    count = 0;
-                }
-                btncount.setText("Count " + count);
-                mEditor.putInt("count", count);
-                mEditor.apply();
+        btncount.setOnClickListener(v -> {
+            if (count == 0) {
+                count = 1;
+            } else if (count == 1) {
+                count = 2;
+            } else if (count == 2) {
+                count = 3;
+            } else if (count == 3) {
+                count = 0;
             }
+            btncount.setText("Count " + count);
+            mEditor.putInt("count", count);
+            mEditor.apply();
         });
 
-        textClock.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                isShow++;
-                if (isShow > 4) {
-                    btncount.setText("Count " + count);
-                    btncount.setVisibility(View.VISIBLE);
-                } else {
-                    btncount.setVisibility(View.GONE);
-                }
+        textClock.setOnClickListener(v -> {
+            isShow++;
+            if (isShow > 4) {
+                btncount.setText("Count " + count);
+                btncount.setVisibility(View.VISIBLE);
+            } else {
+                btncount.setVisibility(View.GONE);
             }
         });
 
@@ -533,9 +514,10 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     private void MemoryAllocation() {
 
-        mSharedPreference = getSharedPreferences("helix", MODE_PRIVATE);
+        mSharedPreference = Constants.getSharedPreference(this);
         mEditor = mSharedPreference.edit();
         count = mSharedPreference.getInt("count", 0);
         textClock = (TextClock) findViewById(R.id.textClock);
@@ -569,89 +551,58 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         txt_title6.setOnClickListener(this);
         txt_title7.setOnClickListener(this);
 
-        mBluetoothAdapter = BluetoothUtils.getBluetoothAdapter(MainActivity.this);
-        if(mBluetoothAdapter==null){
-            Toast.makeText(MainActivity.this, "Bluetooth not supported!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        bluetoothLeScanner = mBluetoothAdapter.getBluetoothLeScanner();
+
     }
 
     private void alert(String message, final String state) {
-        android.app.AlertDialog alertDialog = null;
-        alertDialog = new android.app.AlertDialog.Builder(this)
-                //set icon
-                .setIcon(R.drawable.ic_helix)
-                //set title
-                .setTitle(getResources().getString(R.string.app_name))
-                //set message
-                .setMessage(message)
-                //set positive button
-                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        if (state.equalsIgnoreCase("submit")) {
-                            txtSrNo.setText("1");
-                            edtBaleno.setText("1");
-                            if (!edtLotno.getText().toString().isEmpty()) {
-                                int lot = Integer.parseInt(edtLotno.getText().toString()) + 1;
-                                edtLotno.setText("" + lot);
-                            } else {
-                                edtLotno.setText("1");
-                            }
-                        } else if (state.equalsIgnoreCase(getString(R.string.scan))) {
-                            try {
-                                if(bluetoothDevice!=null){
-                                    mBluetoothLEService.connect(bluetoothDevice.getAddress());
-                                }else{
-                                    startScanning(true);
-                                }
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }else if(state.equalsIgnoreCase(getString(R.string.connected))){
-                            mBluetoothLEService.disconnect();
-                            mBluetoothLEService.close();
-                            btnScan.setText(getString(R.string.scan));
-                            txt_gross_wt.setText("0.0");
-                            edt_tare_wt.setText("0.0");
-                            edt_net_wt.setText("0.0");
-                            Toast.makeText(MainActivity.this, "disconnected", Toast.LENGTH_SHORT).show();
-                        }
 
+        new android.app.AlertDialog.Builder(this)
+
+                .setIcon(R.drawable.ic_helix)
+                .setTitle(getResources().getString(R.string.app_name))
+                .setMessage(message)
+                .setPositiveButton("Ok", (dialogInterface, i) -> {
+                    if (state.equalsIgnoreCase("submit")) {
+                        txtSrNo.setText("1");
+                        edtBaleno.setText("1");
+                        if (!edtLotno.getText().toString().isEmpty()) {
+                            int lot = Integer.parseInt(edtLotno.getText().toString()) + 1;
+                            edtLotno.setText("" + lot);
+                        } else {
+                            edtLotno.setText("1");
+                        }
+                    } else if (state.equalsIgnoreCase(getString(R.string.scan))) {
+                        try {
+//                            if(bluetoothDevice!=null){
+//                                mBluetoothLEService.connect(bluetoothDevice.getAddress());
+//                            }else{
+//                                startScanning(true);
+//                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    } else if (state.equalsIgnoreCase(getString(R.string.connected))) {
+                        mBluetoothLEService.disconnect();
+                        mBluetoothLEService.close();
+                        btnScan.setText(getString(R.string.scan));
+                        txt_gross_wt.setText("0.0");
+                        edt_tare_wt.setText("0.0");
+                        edt_net_wt.setText("0.0");
+                        Toast.makeText(MainActivity.this, "disconnected", Toast.LENGTH_SHORT).show();
                     }
+
                 })
-                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        dialogInterface.dismiss();
-                    }
-                })
+                .setNegativeButton("Cancel", (dialogInterface, i) -> dialogInterface.dismiss())
                 .show();
     }
 
-    private void alert() {
-        android.app.AlertDialog alertDialog = new android.app.AlertDialog.Builder(this)
-                //set icon
-                .setIcon(android.R.drawable.ic_dialog_alert)
-                //set title
-                .setTitle(getResources().getString(R.string.app_name))
-                //set message
-                .setMessage("Please turn on Bluetooth")
-                //set positive button
-                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        setBluetooth(true);
-                    }
-                }).show();
-    }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     protected void onResume() {
         super.onResume();
 
-        if(mBluetoothAdapter==null){
+        if (mBluetoothAdapter == null) {
             Toast.makeText(MainActivity.this, "Bluetooth not supported!", Toast.LENGTH_LONG).show();
             return;
         }
@@ -670,13 +621,13 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             Toast.makeText(this, "Your devices that don't support BLE", Toast.LENGTH_LONG).show();
             finish();
         }
-        if ( !mBluetoothAdapter.enable()) {
+        if (!mBluetoothAdapter.enable()) {
             Intent intent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(intent, Constants.REQUEST_BLUETOOTH_ENABLE_CODE);
         }
 
         if (mBluetoothLEService != null) {
-            final boolean result = mBluetoothLEService.connect(bluetoothDevice.getAddress());
+            final boolean result = mBluetoothLEService.connect(dev_address);
             Log.d(TAG, "Connect request result=" + result);
         }
 
@@ -718,6 +669,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         edtMaterial.setText(Material);
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     protected void onStop() {
         super.onStop();
@@ -743,23 +695,16 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case 1: {
-
-                // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    // permission was granted, yay! Do the
-                    // contacts-related task you need to do.
-                } else {
-
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
-                    Toast.makeText(MainActivity.this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
-                }
-                return;
+        if (requestCode == 1) {// If request is cancelled, the result arrays are empty.
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // permission was granted, yay! Do the
+                // contacts-related task you need to do.
+            } else {
+                // permission denied, boo! Disable the
+                // functionality that depends on this permission.
+                Toast.makeText(MainActivity.this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
             }
-
+            return;
             // other 'case' lines to check for other
             // permissions this app might request
         }
@@ -799,35 +744,36 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 dialog.dismiss();
             }
         });
-        builder.setPositiveButton("View", new DialogInterface.OnClickListener() {
-            public void onClick(@NonNull DialogInterface dialog, int which) {
-                //File file = new File(Environment.getExternalStorageDirectory()+ "/superb/" + filename);
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(Uri.fromFile(file), "application/vnd.ms-excel");
-                startActivity(intent);
-                dialog.dismiss();
-            }
+        builder.setPositiveButton("View", (dialog, which) -> {
+            //File file = new File(Environment.getExternalStorageDirectory()+ "/superb/" + filename);
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.fromFile(file), "application/vnd.ms-excel");
+            startActivity(intent);
+            dialog.dismiss();
         }).show();
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     private void startScanning(final boolean enable) {
 
         Handler mHandler = new Handler();
         if (enable) {
             List<ScanFilter> scanFilters = new ArrayList<>();
             final ScanSettings settings = new ScanSettings.Builder().build();
-          //  ScanFilter scanFilter = new ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(SampleGattAttributes.UUID_BATTERY_LEVEL_UUID)).build();
-           // scanFilters.add(scanFilter);
-            mHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
+            //  ScanFilter scanFilter = new ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(SampleGattAttributes.UUID_BATTERY_LEVEL_UUID)).build();
+            // scanFilters.add(scanFilter);
+            mHandler.postDelayed(() -> {
 
-                    if (!btnScan.getText().toString().equalsIgnoreCase(getString(R.string.connected))) {
-                        btnScan.setText(getString(R.string.scan));
+                if (!btnScan.getText().toString().equalsIgnoreCase(getString(R.string.connected))) {
+                    btnScan.setText(getString(R.string.scan));
+                }
+                if (bluetoothLeScanner != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.S){
+                        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                            return;
+                        }
                     }
-                    if (bluetoothLeScanner != null) {
-                        bluetoothLeScanner.stopScan(scanCallback);
-                    }
+                    bluetoothLeScanner.stopScan(scanCallback);
                 }
             }, Constants.SCAN_PERIOD);
 
@@ -839,20 +785,17 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
         } else {
 
-            mHandler.post(new Runnable() {
-                @Override
-                public void run() {
-
-                    btnScan.setText(getString(R.string.scan));
-                    if (bluetoothLeScanner != null) {
-                        bluetoothLeScanner.stopScan(scanCallback);
-                    }
+            mHandler.post(() -> {
+                btnScan.setText(getString(R.string.scan));
+                if (bluetoothLeScanner != null) {
+                    bluetoothLeScanner.stopScan(scanCallback);
                 }
             });
 
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     public void onConnected(@Nullable Bundle bundle) {
         mLocationRequest = LocationRequest.create();
@@ -863,36 +806,22 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder().addLocationRequest(mLocationRequest);
         builder.setAlwaysShow(true);
 
-        result = LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient, builder.build());
+        Constants.result = LocationServices.SettingsApi.checkLocationSettings(mGoogleApiClient, builder.build());
 
-        result.setResultCallback(new ResultCallback<LocationSettingsResult>() {
-            @Override
-            public void onResult(LocationSettingsResult result) {
-                final Status status = result.getStatus();
-                //final LocationSettingsStates state = result.getLocationSettingsStates();
-                switch (status.getStatusCode()) {
-                    case LocationSettingsStatusCodes.SUCCESS:
-                        // All location settings are satisfied. The client can initialize location
-                        // requests here.
-                        //...
-                        break;
-                    case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
-                        // Location settings are not satisfied. But could be fixed by showing the user
-                        // a dialog.
-                        try {
-                            // Show the dialog by calling startResolutionForResult(),
-                            // and check the result in onActivityResult().
-                            status.startResolutionForResult(MainActivity.this, REQUEST_LOCATION);
-                        } catch (Exception e) {
-                            // Ignore the error.
-                        }
-                        break;
-                    case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
-                        // Location settings are not satisfied. However, we have no way to fix the
-                        // settings so we won't show the dialog.
-                        //...
-                        break;
-                }
+        Constants.result.setResultCallback(result -> {
+            final Status status = result.getStatus();
+            //final LocationSettingsStates state = result.getLocationSettingsStates();
+            switch (status.getStatusCode()) {
+                case LocationSettingsStatusCodes.SUCCESS:
+                    break;
+                case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                    try {
+                        status.startResolutionForResult(MainActivity.this, REQUEST_LOCATION);
+                    } catch (Exception e) {
+                    }
+                    break;
+                case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                    break;
             }
         });
 
